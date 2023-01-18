@@ -1,0 +1,148 @@
+#Loading Libraries to work with the data
+
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(readr)
+library(janitor)
+library(lubridate)
+
+install.packages("lubridate")
+
+#Importing the data from the 12 separete .csv files
+
+df_04_2020 <- read_csv('202004-divvy-tripdata.csv')
+df_05_2020 <- read_csv('202004-divvy-tripdata.csv')
+df_06_2020 <- read_csv('202004-divvy-tripdata.csv')
+df_07_2020 <- read_csv('202004-divvy-tripdata.csv')
+df_08_2020 <- read_csv('202004-divvy-tripdata.csv')
+df_09_2020 <- read_csv('202004-divvy-tripdata.csv')
+df_10_2020 <- read_csv('202004-divvy-tripdata.csv')
+df_11_2020 <- read_csv('202004-divvy-tripdata.csv')
+df_12_2020 <- read_csv('202004-divvy-tripdata.csv')
+df_01_2021 <- read_csv('202004-divvy-tripdata.csv')
+df_02_2021 <- read_csv('202004-divvy-tripdata.csv')
+df_03_2021 <- read_csv('202004-divvy-tripdata.csv')
+
+
+#viewing the data to make sure its ok, imported and with right fields
+
+View(df_04_2020)
+View(df_05_2020)
+View(df_06_2020)
+View(df_07_2020)
+View(df_08_2020)
+View(df_09_2020)
+View(df_10_2020)
+View(df_11_2020)
+View(df_12_2020)
+View(df_01_2021)
+View(df_02_2021)
+View(df_03_2021)
+
+# compare the data type of columns across all the data frames
+compare_df_cols(df_04_2020,df_05_2020,df_06_2020,df_07_2020,df_08_2020,df_09_2020,df_10_2020,df_11_2020,df_12_2020,df_01_2021,df_02_2021,df_03_2021, return="mismatch")
+
+#merging all the diferent CSV files into one to better work with the data.
+total_trips <- rbind(df_04_2020,df_05_2020,df_06_2020,df_07_2020,df_08_2020,df_09_2020,df_10_2020,df_11_2020,df_12_2020,df_01_2021,df_02_2021,df_03_2021)
+
+#Check the data
+View(total_trips)
+
+#verify the bike types (There is only one in this dataset)
+unique(total_trips$rideable_type)
+
+#check the client types
+unique(total_trips$member_casual)
+
+#removing trips that are duplicated
+total_trips <- total_trips %>% 
+  distinct(ride_id, .keep_all= TRUE)
+
+#section to create ride length column:
+
+#Changing from string to Time format
+total_trips <- total_trips %>% 
+  mutate(started_at = as.POSIXct(started_at,format = "%Y-%m-%d %H:%M:%S"),
+         ended_at = as.POSIXct(ended_at,format = "%Y-%m-%d %H:%M:%S"))
+
+#Creating new column for ride_length
+total_trips <-  total_trips %>% 
+	mutate(ride_length = ended_at - started_at)
+
+
+
+# removing duplicate trips with the same id
+total_trips <- total_trips %>% 
+  distinct(ride_id, .keep_all= TRUE)
+
+# checking that all values in the trip_duration column are positive ones and removing the negative ones
+total_trips <- total_trips %>%
+  filter(ride_length>0)
+
+# counting the total of NA values in the station columns
+sum(is.na(total_trips$start_station_name))
+sum(is.na(total_trips$start_station_id))
+
+sum(is.na(total_trips$end_station_name))
+sum(is.na(total_trips$end_station_id))
+
+# removing na values
+total_trips <- na.omit(total_trips)
+
+# calculate the duration of each trip and make it a new column
+total_trips$trip_duration <- as.numeric(difftime(total_trips$ended_at,total_trips$started_at, units='mins'))
+
+# Getting the wweekday in wich the trip started
+total_trips$weekday <- weekdays(total_trips$started_at, abbreviate=FALSE)
+
+# Creating a column of the month in which the trip started
+total_trips$month <- format(total_trips$started_at, "%m")   
+
+write.csv(total_trips,'total_trips.csv')
+
+#STARTING ANALYSIS
+
+# trip duration data
+ mean(total_trips$trip_duration) 
+
+ median(total_trips$trip_duration) 
+
+ max(total_trips$trip_duration) #longest trip
+
+ min(total_trips$trip_duration) #shortest trip
+
+
+# total number of casual and member clients rides
+total_trips %>%
+  group_by(member_casual)%>%
+  	summarise(n=n()) %>%
+  		mutate(percent = n*100/sum(n))
+
+# average time of trip for each type of user
+avg_duration<-total_trips%>%
+  group_by(member_casual)%>%
+  summarise(average_trip_time = mean(trip_duration))
+
+
+#creating a graph
+ggplot(avg_duration, aes(x=member_casual, y=average_trip_time, fill=member_casual))+
+  geom_col() +
+  labs(title="Average Duration Member vs Casual")
+
+# Now, let's run the average ride time by each day for members vs casual user
+# we first need to order by weekday
+
+avg_duration_per_weekday <- total_trips%>%
+  group_by(member_casual, weekday)%>%
+  summarise(average_trip_time = mean(trip_duration))
+
+
+avg_duration_per_weekday$weekday <- factor(avg_duration_per_weekday$weekday, levels= c( "Monday", 
+                                         "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday","Sunday"))
+
+avg_duration_per_weekday[order(avg_duration_per_weekday$weekday), ]
+
+#exporting the data into a csv file
+write.csv(total_trips,'total_trips.csv')
+
